@@ -7,7 +7,7 @@ GitHub QuickShot est un outil minimaliste conçu pour créer des issues GitHub e
 * **Vitesse maximale** : Ne naviguez plus dans les menus complexes de GitHub. Une seule ligne de commande suffit pour tout configurer.
 * **Autocomplétion intelligente** : L'application suggère les dépôts, labels, membres et milestones réels de vos projets dès que vous tapez `#`.
 * **Interface sans distraction** : Un champ de texte unique pour rester concentré sur l'essentiel : la rédaction de vos tickets.
-* **Sécurité & Confidentialité** : Connexion via OAuth avec des droits restreints (`public_repo`) et révocation immédiate du token à la déconnexion.
+* **Sécurité & Confidentialité** : Connexion via OAuth et révocation immédiate du token à la déconnexion.
 
 ---
 
