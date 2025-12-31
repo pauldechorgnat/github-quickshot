@@ -40,7 +40,7 @@
                         <label class="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Commande Rapide</label>
                         <input id="command" autocomplete="off"
                                class="w-full border-2 border-slate-100 p-4 rounded-2xl focus:border-blue-500 focus:ring-4 focus:ring-blue-50/50 outline-none transition text-lg font-medium shadow-sm" 
-                               placeholder='#repo:mon-projet #type:bug Titre...'>
+                               placeholder='#repo:mon-projet #label:bug Titre...'>
                         
                         <div id="suggestion-menu" class="hidden absolute z-50 w-full bg-white border border-slate-200 mt-1 rounded-xl shadow-2xl max-h-60 overflow-y-auto"></div>
                     </div>
@@ -49,7 +49,7 @@
                         <div class="px-4 py-2 bg-blue-50 rounded-full border border-blue-100 text-sm font-bold text-blue-700 italic">Repo: <span id="p-repo">...</span></div>
                         <div class="px-4 py-2 bg-purple-50 rounded-full border border-purple-100 text-sm font-bold text-purple-700 italic">Label: <span id="p-label">...</span></div>
                         <div class="px-4 py-2 bg-orange-50 rounded-full border border-orange-100 text-sm font-bold text-orange-700 italic">Assigné: <span id="p-assignee">...</span></div>
-                        <div class="px-4 py-2 bg-emerald-50 rounded-full border border-emerald-100 text-sm font-bold text-emerald-700 italic">Status: <span id="p-status">...</span></div>
+                        <!-- <div class="px-4 py-2 bg-emerald-50 rounded-full border border-emerald-100 text-sm font-bold text-emerald-700 italic">Status: <span id="p-status">...</span></div> -->
                     </div>
 
                     <textarea id="desc" class="w-full border-2 border-slate-100 p-4 rounded-2xl h-40 outline-none shadow-sm" placeholder="Description de l'issue..."></textarea>
@@ -98,7 +98,7 @@
         input.addEventListener('input', () => {
             const val = input.value;
             const repoMatch = val.match(/#repo:([\w\d\-\_.\/]*)$/);
-            const labelMatch = val.match(/#(?:type|label):([\w\d\-\_.]*)$/);
+            const labelMatch = val.match(/#label:([\w\d\-\_.]*)$/);
             const assigneeMatch = val.match(/#assignee:([\w\d\-\_.]*)$/);
             const statusMatch = val.match(/#status:([\w\d\-\_.]*)$/);
             
@@ -126,9 +126,9 @@
             updatePreview();
         });
 
-        function showMenu(list, type) {
+        function showMenu(list, label) {
             if (list.length === 0) return hideMenu();
-            currentSuggestType = type;
+            currentSuggestType = label;
             activeIndex = 0;
             menu.innerHTML = list.map((item, i) => 
                 `<div class="suggestion-item p-3 cursor-pointer hover:bg-slate-50 ${i === 0 ? 'bg-blue-50' : ''}" onclick="selectSuggestion(${i})">${item}</div>`
@@ -151,14 +151,14 @@
                 regex = /#repo:[\w\d\-\_.\/]*$/;
                 fetchRepoDetails(selected);
             } else if (currentSuggestType === 'label') {
-                regex = /#(?:type|label):([\w\d\-\_.]*)$/;
+                regex = /#label:([\w\d\-\_.]*)$/;
             } else if (currentSuggestType === 'assignee') {
                 regex = /#assignee:[\w\d\-\_.]*$/;
             } else if (currentSuggestType === 'status') {
                 regex = /#status:[\w\d\-\_.]*$/;
             }
             
-            input.value = val.replace(regex, `#${currentSuggestType === 'label' ? 'type' : currentSuggestType}:${selected} `);
+            input.value = val.replace(regex, `#${currentSuggestType}:${selected} `);
             hideMenu();
             input.focus();
             updatePreview();
@@ -198,7 +198,7 @@
             document.getElementById('p-repo').innerText = data.repo || '...';
             document.getElementById('p-label').innerText = data.label || '...';
             document.getElementById('p-assignee').innerText = data.assignee || '...';
-            document.getElementById('p-status').innerText = data.status || '...';
+            // document.getElementById('p-status').innerText = data.status || '...';
         }
 
         async function createIssue() {
