@@ -1,0 +1,242 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <title>GitHub QuickShot</title>
+</head>
+<body class="bg-slate-50 min-h-screen font-sans">
+    {% if not state.token %}
+    <div class="flex items-center justify-center h-screen bg-slate-900">
+        <a href="https://github.com/login/oauth/authorize?client_id={{ client_id }}&scope=repo&redirect_uri={{ redirect_uri }}" 
+           class="bg-white text-slate-900 px-8 py-4 rounded-full font-bold shadow-2xl hover:scale-105 transition flex items-center gap-3">
+            Se connecter avec GitHub
+        </a>
+    </div>
+    {% else %}
+    <div class="max-w-4xl mx-auto py-12 px-4">
+        <div class="bg-white rounded-3xl shadow-2xl overflow-hidden border border-slate-200">
+            <div class="bg-slate-900 p-6 flex justify-between items-center text-white">
+                <h1 class="text-xl font-black tracking-tighter">GITHUB <span class="text-blue-400">QUICKSHOT</span></h1>
+                <a href="/logout" class="text-xs bg-slate-800 hover:bg-red-500 px-4 py-2 rounded-full transition">Déconnexion</a>
+            </div>
+
+            <div class="p-8">
+                <div id="alert-box" class="hidden mb-6 p-4 rounded-xl border flex items-center justify-between transition-all duration-300">
+                    <span id="alert-text" class="font-medium"></span>
+                    <button onclick="hideAlert()" class="text-xl font-bold">&times;</button>
+                </div>
+
+                <div class="space-y-6">
+                    <div>
+                        <label class="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Périmètre (Owner)</label>
+                        <select id="owner-filter" class="w-full md:w-1/3 border-2 border-slate-100 p-3 rounded-xl outline-none transition bg-white text-sm font-semibold shadow-sm">
+                            <option value="all">Tous les comptes</option>
+                            {% for owner in state.owners %}<option value="{{ owner }}">{{ owner }}</option>{% endfor %}
+                        </select>
+                    </div>
+
+                    <div class="relative">
+                        <label class="block text-xs font-bold text-slate-400 uppercase tracking-widest mb-2">Commande Rapide</label>
+                        <input id="command" autocomplete="off"
+                               class="w-full border-2 border-slate-100 p-4 rounded-2xl focus:border-blue-500 focus:ring-4 focus:ring-blue-50/50 outline-none transition text-lg font-medium shadow-sm" 
+                               placeholder='#repo:mon-projet #type:bug Titre...'>
+                        
+                        <div id="suggestion-menu" class="hidden absolute z-50 w-full bg-white border border-slate-200 mt-1 rounded-xl shadow-2xl max-h-60 overflow-y-auto"></div>
+                    </div>
+
+                    <div class="flex flex-wrap gap-3">
+                        <div class="px-4 py-2 bg-blue-50 rounded-full border border-blue-100 text-sm font-bold text-blue-700 italic">Repo: <span id="p-repo">...</span></div>
+                        <div class="px-4 py-2 bg-purple-50 rounded-full border border-purple-100 text-sm font-bold text-purple-700 italic">Label: <span id="p-label">...</span></div>
+                        <div class="px-4 py-2 bg-orange-50 rounded-full border border-orange-100 text-sm font-bold text-orange-700 italic">Assigné: <span id="p-assignee">...</span></div>
+                        <div class="px-4 py-2 bg-emerald-50 rounded-full border border-emerald-100 text-sm font-bold text-emerald-700 italic">Status: <span id="p-status">...</span></div>
+                    </div>
+
+                    <textarea id="desc" class="w-full border-2 border-slate-100 p-4 rounded-2xl h-40 outline-none shadow-sm" placeholder="Description de l'issue..."></textarea>
+
+                    <button id="btn-send" onclick="createIssue()" class="w-full bg-blue-600 hover:bg-blue-700 text-white p-5 rounded-2xl font-black text-lg transition-colors shadow-lg active:scale-[0.98]">
+                        CRÉER L'ISSUE (Ctrl + Entrée)
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+
+    <script>
+        const reposByOwner = {{ state.repos_by_owner | tojson }};
+        const input = document.getElementById('command');
+        const menu = document.getElementById('suggestion-menu');
+        const ownerFilter = document.getElementById('owner-filter');
+        
+        let activeIndex = -1;
+        let filteredSuggestions = [];
+        let currentSuggestType = ''; // 'repo', 'label', 'assignee', 'status'
+        let currentRepoDetails = { labels: [], assignees: [], milestones: [] };
+
+        // --- Alertes ---
+        function showAlert(msg, isSuccess) {
+            const box = document.getElementById('alert-box');
+            const text = document.getElementById('alert-text');
+            text.innerText = msg;
+            box.className = `mb-6 p-4 rounded-xl border flex items-center justify-between transition-all ${isSuccess ? 'bg-green-50 border-green-200 text-green-800' : 'bg-red-50 border-red-200 text-red-800'}`;
+            box.classList.remove('hidden');
+            if(isSuccess) setTimeout(hideAlert, 5000);
+        }
+
+        function hideAlert() { document.getElementById('alert-box').classList.add('hidden'); }
+
+        // --- Suggestions ---
+        async function fetchRepoDetails(repoName) {
+            const res = await fetch(`/repo-details?full_name=${encodeURIComponent(repoName)}`);
+            const data = await res.json();
+            if (data.success) {
+                currentRepoDetails = { labels: data.labels, assignees: data.assignees, milestones: data.milestones };
+            }
+        }
+
+        input.addEventListener('input', () => {
+            const val = input.value;
+            const repoMatch = val.match(/#repo:([\w\d\-\_.\/]*)$/);
+            const labelMatch = val.match(/#(?:type|label):([\w\d\-\_.]*)$/);
+            const assigneeMatch = val.match(/#assignee:([\w\d\-\_.]*)$/);
+            const statusMatch = val.match(/#status:([\w\d\-\_.]*)$/);
+            
+            if (repoMatch) {
+                const search = repoMatch[1].toLowerCase();
+                const owner = ownerFilter.value;
+                const pool = (owner === 'all') ? Object.values(reposByOwner).flat() : (reposByOwner[owner] || []);
+                filteredSuggestions = pool.filter(r => r.toLowerCase().includes(search)).slice(0, 10);
+                showMenu(filteredSuggestions, 'repo');
+            } else if (labelMatch) {
+                const search = labelMatch[1].toLowerCase();
+                filteredSuggestions = currentRepoDetails.labels.filter(l => l.toLowerCase().includes(search)).slice(0, 10);
+                showMenu(filteredSuggestions, 'label');
+            } else if (assigneeMatch) {
+                const search = assigneeMatch[1].toLowerCase();
+                filteredSuggestions = currentRepoDetails.assignees.filter(a => a.toLowerCase().includes(search)).slice(0, 10);
+                showMenu(filteredSuggestions, 'assignee');
+            } else if (statusMatch) {
+                const search = statusMatch[1].toLowerCase();
+                filteredSuggestions = currentRepoDetails.milestones.filter(m => m.toLowerCase().includes(search)).slice(0, 10);
+                showMenu(filteredSuggestions, 'status');
+            } else {
+                hideMenu();
+            }
+            updatePreview();
+        });
+
+        function showMenu(list, type) {
+            if (list.length === 0) return hideMenu();
+            currentSuggestType = type;
+            activeIndex = 0;
+            menu.innerHTML = list.map((item, i) => 
+                `<div class="suggestion-item p-3 cursor-pointer hover:bg-slate-50 ${i === 0 ? 'bg-blue-50' : ''}" onclick="selectSuggestion(${i})">${item}</div>`
+            ).join('');
+            menu.classList.remove('hidden');
+        }
+
+        function hideMenu() {
+            menu.classList.add('hidden');
+            activeIndex = -1;
+        }
+
+        function selectSuggestion(index) {
+            if (index < 0 || index >= filteredSuggestions.length) return;
+            const selected = filteredSuggestions[index];
+            const val = input.value;
+            
+            let regex;
+            if (currentSuggestType === 'repo') {
+                regex = /#repo:[\w\d\-\_.\/]*$/;
+                fetchRepoDetails(selected);
+            } else if (currentSuggestType === 'label') {
+                regex = /#(?:type|label):([\w\d\-\_.]*)$/;
+            } else if (currentSuggestType === 'assignee') {
+                regex = /#assignee:[\w\d\-\_.]*$/;
+            } else if (currentSuggestType === 'status') {
+                regex = /#status:[\w\d\-\_.]*$/;
+            }
+            
+            input.value = val.replace(regex, `#${currentSuggestType === 'label' ? 'type' : currentSuggestType}:${selected} `);
+            hideMenu();
+            input.focus();
+            updatePreview();
+        }
+
+        // --- Clavier ---
+        input.addEventListener('keydown', (e) => {
+            if (menu.classList.contains('hidden')) {
+                if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') createIssue();
+                return;
+            }
+            if (e.key === 'ArrowDown') {
+                e.preventDefault();
+                activeIndex = (activeIndex + 1) % filteredSuggestions.length;
+                renderActive();
+            } else if (e.key === 'ArrowUp') {
+                e.preventDefault();
+                activeIndex = (activeIndex - 1 + filteredSuggestions.length) % filteredSuggestions.length;
+                renderActive();
+            } else if (e.key === 'Tab' || e.key === 'Enter') {
+                e.preventDefault();
+                selectSuggestion(activeIndex);
+            } else if (e.key === 'Escape') {
+                hideMenu();
+            }
+        });
+
+        function renderActive() {
+            Array.from(menu.children).forEach((child, i) => {
+                child.classList.toggle('bg-blue-50', i === activeIndex);
+            });
+        }
+
+        async function updatePreview() {
+            const res = await fetch('/parse?cmd=' + encodeURIComponent(input.value));
+            const data = await res.json();
+            document.getElementById('p-repo').innerText = data.repo || '...';
+            document.getElementById('p-label').innerText = data.label || '...';
+            document.getElementById('p-assignee').innerText = data.assignee || '...';
+            document.getElementById('p-status').innerText = data.status || '...';
+        }
+
+        async function createIssue() {
+            const btn = document.getElementById('btn-send');
+            const descField = document.getElementById('desc');
+            const cmd = input.value;
+            
+            btn.disabled = true;
+            btn.innerText = "ENVOI EN COURS...";
+            
+            try {
+                const res = await fetch('/create', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({command: cmd, description: descField.value})
+                });
+                const result = await res.json();
+                
+                showAlert(result.message, result.success);
+                
+                if(result.success) {
+                    // Garder les tags mais vider le titre et la description
+                    const tags = cmd.match(/#\w+(:("[^"]+"|\S+))?/g) || [];
+                    input.value = tags.join(' ') + (tags.length ? ' ' : '');
+                    descField.value = '';
+                    updatePreview();
+                }
+            } catch (e) {
+                showAlert("Erreur de connexion au serveur", false);
+            } finally {
+                btn.disabled = false;
+                btn.innerText = "CRÉER L'ISSUE (Ctrl + Entrée)";
+            }
+        }
+
+        document.addEventListener('click', (e) => {
+            if (!menu.contains(e.target) && e.target !== input) hideMenu();
+        });
+    </script>
+</body>
+</html>
