@@ -14,7 +14,7 @@ CLIENT_SECRET = os.environ["GITHUB_CLIENT_SECRET"]
 REDIRECT_URI = "http://localhost:8000/callback"
 AUTHORIZED_OWNERS = os.environ.get("AUTHORIZED_OWNERS")
 if AUTHORIZED_OWNERS is not None:
-    AUTHORIZED_OWNERS = AUTHORIZED_OWNERS.split(",")
+    AUTHORIZED_OWNERS = [o.lower() for o in AUTHORIZED_OWNERS.split(",")]
 
 
 class CustomAsyncClient(httpx.AsyncClient):
@@ -66,7 +66,7 @@ async def callback(code: str):
         state["owners"] = sorted(list(repos_by_owner.keys()))
         
         if AUTHORIZED_OWNERS is not None:
-            state["owners"] = [owner for owner in state["owners"] if owner in AUTHORIZED_OWNERS]
+            state["owners"] = [owner for owner in state["owners"] if owner.lower() in AUTHORIZED_OWNERS]
             state["repos_by_owner"] = {owner: repos_by_owner[owner] for owner in state["owners"]}
     return RedirectResponse(url="/")
 
@@ -115,7 +115,7 @@ async def logout():
         async with httpx.AsyncClient() as client:
             # L'URL de révocation pour les OAuth Apps
             # Elle nécessite l'ID de l'application dans l'URL
-            url = f"https://api.github.com/applications/{CLIENT_ID}/token"
+            url = f"https://api.github.com/applications/{CLIENT_ID}/grant"
             
             try:
                 # GitHub demande une authentification Basic avec Client ID et Secret
